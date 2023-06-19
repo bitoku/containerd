@@ -61,6 +61,7 @@ func TestContainerdImage(t *testing.T) {
 
 	t.Logf("the image should be seen by the cri plugin")
 	var id string
+	var repoDigest string
 	checkImage := func() (bool, error) {
 		img, err := imageService.ImageStatus(&runtime.ImageSpec{Image: testImage})
 		if err != nil {
@@ -87,6 +88,10 @@ func TestContainerdImage(t *testing.T) {
 		if img.RepoTags[0] != testImage {
 			return false, fmt.Errorf("unexpected repotag %q", img.RepoTags[0])
 		}
+		if len(img.RepoDigests) != 1 {
+			return false, fmt.Errorf("unexpected repodigests: %+v", img.RepoDigests)
+		}
+		repoDigest = img.RepoDigests[0]
 		return true, nil
 	}
 	require.NoError(t, Eventually(checkImage, 100*time.Millisecond, 10*time.Second))
@@ -105,6 +110,9 @@ func TestContainerdImage(t *testing.T) {
 		}, 100*time.Millisecond, time.Second))
 		t.Logf("image should be removed from the cri plugin if all references get deleted")
 		if err := containerdClient.ImageService().Delete(ctx, id); err != nil {
+			assert.True(t, errdefs.IsNotFound(err), err)
+		}
+		if err := containerdClient.ImageService().Delete(ctx, repoDigest); err != nil {
 			assert.True(t, errdefs.IsNotFound(err), err)
 		}
 		assert.NoError(t, Eventually(func() (bool, error) {
