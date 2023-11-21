@@ -25,14 +25,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	runtime "k8s.io/cri-api/pkg/apis/runtime/v1"
+
 	containerd "github.com/containerd/containerd/v2/client"
 	"github.com/containerd/containerd/v2/errdefs"
 	"github.com/containerd/containerd/v2/integration/images"
 	"github.com/containerd/containerd/v2/namespaces"
 	"github.com/containerd/containerd/v2/pkg/cri/labels"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	runtime "k8s.io/cri-api/pkg/apis/runtime/v1"
 )
 
 // Test to test the CRI plugin should see image pulled into containerd directly.
@@ -88,7 +89,7 @@ func TestContainerdImage(t *testing.T) {
 		if img.RepoTags[0] != testImage {
 			return false, fmt.Errorf("unexpected repotag %q", img.RepoTags[0])
 		}
-		if len(img.RepoDigests) != 1 {
+		if len(img.RepoDigests) != 1 || img.RepoDigests[0] != "gcr.io/library/busybox@sha256:7b3ccabffc97de872a30dfd234fd972a66d247c8cfc69b0550f276481852627c" {
 			return false, fmt.Errorf("unexpected repodigests: %+v", img.RepoDigests)
 		}
 		repoDigest = img.RepoDigests[0]
