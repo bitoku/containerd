@@ -89,8 +89,9 @@ func TestContainerdImage(t *testing.T) {
 		if img.RepoTags[0] != testImage {
 			return false, fmt.Errorf("unexpected repotag %q", img.RepoTags[0])
 		}
-		if len(img.RepoDigests) != 1 || img.RepoDigests[0] != containerdImage.Target().Digest.String() {
-			return false, fmt.Errorf("unexpected repodigests: %+v, expected: %s", img.RepoDigests, containerdImage.Target().Digest.String())
+		digest := containerdImage.Name() + "@" + containerdImage.Target().Digest.String()
+		if len(img.RepoDigests) != 1 || img.RepoDigests[0] != digest {
+			return false, fmt.Errorf("unexpected repodigests: %+v, expected: %s", img.RepoDigests, digest)
 		}
 		repoDigest = img.RepoDigests[0]
 		return true, nil
