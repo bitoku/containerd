@@ -50,7 +50,7 @@ func TestContainerdImage(t *testing.T) {
 
 	t.Logf("pull the image into containerd")
 	lbs := map[string]string{"foo": "bar", labels.PinnedImageLabelKey: labels.PinnedImageLabelValue}
-	_, err = containerdClient.Pull(ctx, testImage, containerd.WithPullUnpack, containerd.WithPullLabels(lbs))
+	containerdImage, err := containerdClient.Pull(ctx, testImage, containerd.WithPullUnpack, containerd.WithPullLabels(lbs))
 	assert.NoError(t, err)
 	defer func() {
 		// Make sure the image is cleaned up in any case.
@@ -89,7 +89,7 @@ func TestContainerdImage(t *testing.T) {
 		if img.RepoTags[0] != testImage {
 			return false, fmt.Errorf("unexpected repotag %q", img.RepoTags[0])
 		}
-		if len(img.RepoDigests) != 1 || img.RepoDigests[0] != "ghcr.io/containerd/busybox@sha256:7b3ccabffc97de872a30dfd234fd972a66d247c8cfc69b0550f276481852627c" {
+		if len(img.RepoDigests) != 1 || img.RepoDigests[0] != containerdImage.Target().Digest.String() {
 			return false, fmt.Errorf("unexpected repodigests: %+v", img.RepoDigests)
 		}
 		repoDigest = img.RepoDigests[0]
