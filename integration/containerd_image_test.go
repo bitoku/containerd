@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/distribution/reference"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	runtime "k8s.io/cri-api/pkg/apis/runtime/v1"
@@ -64,36 +65,39 @@ func TestContainerdImage(t *testing.T) {
 	var id string
 	var repoDigest string
 	checkImage := func() (bool, error) {
-		img, err := imageService.ImageStatus(&runtime.ImageSpec{Image: testImage})
+		criImage, err := imageService.ImageStatus(&runtime.ImageSpec{Image: testImage})
 		if err != nil {
 			return false, err
 		}
-		if img == nil {
+		if criImage == nil {
 			t.Logf("Image %q not show up in the cri plugin yet", testImage)
 			return false, nil
 		}
-		id = img.Id
-		img, err = imageService.ImageStatus(&runtime.ImageSpec{Image: id})
+		id = criImage.Id
+		criImage, err = imageService.ImageStatus(&runtime.ImageSpec{Image: id})
 		if err != nil {
 			return false, err
 		}
-		if img == nil {
+		if criImage == nil {
 			// We always generate image id as a reference first, it must
 			// be ready here.
 			return false, errors.New("can't reference image by id")
 		}
-		if len(img.RepoTags) != 1 {
+		if len(criImage.RepoTags) != 1 {
 			// RepoTags must have been populated correctly.
-			return false, fmt.Errorf("unexpected repotags: %+v", img.RepoTags)
+			return false, fmt.Errorf("unexpected repotags: %+v", criImage.RepoTags)
 		}
-		if img.RepoTags[0] != testImage {
-			return false, fmt.Errorf("unexpected repotag %q", img.RepoTags[0])
+		if criImage.RepoTags[0] != testImage {
+			return false, fmt.Errorf("unexpected repotag %q", criImage.RepoTags[0])
 		}
-		digest := containerdImage.Name() + "@" + containerdImage.Target().Digest.String()
-		if len(img.RepoDigests) != 1 || img.RepoDigests[0] != digest {
-			return false, fmt.Errorf("unexpected repodigests: %+v, expected: %s", img.RepoDigests, digest)
+		digest, err := reference.ParseDockerRef(containerdImage.Name() + "@" + containerdImage.Target().Digest.String())
+		if err != nil {
+			return false, err
 		}
-		repoDigest = img.RepoDigests[0]
+		if len(criImage.RepoDigests) != 1 || criImage.RepoDigests[0] != digest.String() {
+			return false, fmt.Errorf("unexpected repodigests: %+v, expected: %s", criImage.RepoDigests, digest)
+		}
+		repoDigest = criImage.RepoDigests[0]
 		return true, nil
 	}
 	require.NoError(t, Eventually(checkImage, 100*time.Millisecond, 10*time.Second))
