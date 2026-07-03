@@ -179,3 +179,122 @@ func TestSendInBatchesContextCancelledMidStream(t *testing.T) {
 	assert.Equal(t, context.Canceled, err)
 	assert.Equal(t, 2, sendCount)
 }
+
+func TestSendInBatchesBySize(t *testing.T) {
+	type item struct {
+		id   int
+		size int
+	}
+
+	sizeFn := func(it *item) int { return it.size }
+
+	for _, test := range []struct {
+		desc             string
+		items            []*item
+		maxBytes         int
+		expectBatches    int
+		expectBatchSizes []int
+	}{
+		{
+			desc:             "empty items",
+			items:            nil,
+			maxBytes:         100,
+			expectBatches:    0,
+			expectBatchSizes: nil,
+		},
+		{
+			desc:             "all items fit in one batch",
+			items:            []*item{{0, 30}, {1, 30}, {2, 30}},
+			maxBytes:         100,
+			expectBatches:    1,
+			expectBatchSizes: []int{3},
+		},
+		{
+			desc:             "items split across batches",
+			items:            []*item{{0, 40}, {1, 40}, {2, 40}, {3, 40}, {4, 40}},
+			maxBytes:         100,
+			expectBatches:    3,
+			expectBatchSizes: []int{2, 2, 1},
+		},
+		{
+			desc:             "single oversized item sent alone",
+			items:            []*item{{0, 10}, {1, 200}, {2, 10}},
+			maxBytes:         100,
+			expectBatches:    3,
+			expectBatchSizes: []int{1, 1, 1},
+		},
+		{
+			desc:             "exact fit",
+			items:            []*item{{0, 50}, {1, 50}},
+			maxBytes:         100,
+			expectBatches:    1,
+			expectBatchSizes: []int{2},
+		},
+		{
+			desc:             "one byte over triggers split",
+			items:            []*item{{0, 50}, {1, 51}},
+			maxBytes:         100,
+			expectBatches:    2,
+			expectBatchSizes: []int{1, 1},
+		},
+		{
+			desc:             "single item",
+			items:            []*item{{0, 10}},
+			maxBytes:         100,
+			expectBatches:    1,
+			expectBatchSizes: []int{1},
+		},
+	} {
+		t.Run(test.desc, func(t *testing.T) {
+			var batches [][]*item
+			err := sendInBatchesBySize(context.Background(), test.items, test.maxBytes, sizeFn, func(batch []*item) error {
+				batches = append(batches, batch)
+				return nil
+			})
+			assert.NoError(t, err)
+			assert.Len(t, batches, test.expectBatches)
+			for i, expectedSize := range test.expectBatchSizes {
+				assert.Len(t, batches[i], expectedSize, "batch %d", i)
+			}
+			var allItems []*item
+			for _, batch := range batches {
+				allItems = append(allItems, batch...)
+			}
+			assert.Equal(t, test.items, allItems)
+		})
+	}
+}
+
+func TestSendInBatchesBySizeContextCancelled(t *testing.T) {
+	type item struct{ size int }
+	items := []*item{{10}, {10}, {10}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var sendCount int
+	err := sendInBatchesBySize(ctx, items, 100, func(it *item) int { return it.size }, func(batch []*item) error {
+		sendCount++
+		return nil
+	})
+	assert.Error(t, err)
+	assert.Equal(t, context.Canceled, err)
+	assert.Equal(t, 0, sendCount)
+}
+
+func TestSendInBatchesBySizeSendError(t *testing.T) {
+	type item struct{ size int }
+	items := []*item{{40}, {40}, {40}, {40}}
+
+	sendErr := fmt.Errorf("send failed")
+	var sendCount int
+	err := sendInBatchesBySize(context.Background(), items, 50, func(it *item) int { return it.size }, func(batch []*item) error {
+		sendCount++
+		if sendCount == 2 {
+			return sendErr
+		}
+		return nil
+	})
+	assert.ErrorIs(t, err, sendErr)
+	assert.Equal(t, 2, sendCount)
+}
